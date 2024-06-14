@@ -1,0 +1,126 @@
+version: "3.7"
+
+services:
+    mariadb1:
+        container_name: mariadb1
+        image: mariadb:latest
+        environment:
+            MYSQL_ROOT_PASSWORD: 
+            MYSQL_USER: mariadb_user
+            MYSQL_PASSWORD: secure_pass123
+        ports:
+            - "3307:3306"
+        networks:
+            - mariadb_network
+        volumes:
+            - ./docker_config/galera_cluster1.cnf:/etc/mysql/mariadb.conf.d/60-galera.cnf
+            - ./docker_config/init-mariadb.sql:/docker-entrypoint-initdb.d/init.sql
+
+    mariadb2:
+        container_name: mariadb2
+        image: mariadb:latest
+        environment:
+            MYSQL_ROOT_PASSWORD: new_secure_password
+            MYSQL_USER: mariadb_user
+            MYSQL_PASSWORD: secure_pass123
+        ports:
+            - "3308:3306"
+        networks:
+            - mariadb_network
+        volumes:
+            - ./docker_config/galera_cluster2.cnf:/etc/mysql/mariadb.conf.d/60-galera.cnf
+            - ./docker_config/init-mariadb.sql:/docker-entrypoint-initdb.d/init.sql
+
+    maxscale:
+        container_name: maxscale
+        image: mariadb/maxscale:latest
+        ports:
+            - "4008:4008"
+            - "4006:4006"
+            - "8989:8989"
+        depends_on:
+            - mariadb1
+            - mariadb2
+        networks:
+            - mariadb_network
+        volumes:
+            - ./maxscale.cnf:/etc/maxscale.cnf
+
+    keycloak:
+        container_name: keycloak
+        image: quay.io/keycloak/keycloak:latest
+        command: -b 0.0.0.0 -Dkeycloak.migration.action=import -Dkeycloak.migration.provider=singleFile -Dkeycloak.migration.file=/opt/keycloak/data/import/keycloak.json
+        environment:
+            KEYCLOAK_USER: admin
+            KEYCLOAK_PASSWORD: admin
+            DB_VENDOR: H2
+        ports:
+            - "8080:8080"
+        networks:
+            - mariadb_network
+        volumes:
+            - ./docker_config/keycloak.json:/opt/keycloak/data/import/keycloak.json
+
+    backend-dev:
+        container_name: backend-dev
+        build:
+            context: ./backend
+            dockerfile: Dockerfile.dev
+        environment:
+            FLASK_ENV: development
+        ports:
+            - "5000:5000"
+        networks:
+            - mariadb_network
+        depends_on:
+            - maxscale
+            - keycloak
+
+    backend-prod:
+        container_name: backend-prod
+        build:
+            context: ./backend
+            dockerfile: Dockerfile.prod
+        environment:
+            FLASK_ENV: production
+        ports:
+            - "5001:5000"
+        networks:
+            - mariadb_network
+        depends_on:
+            - maxscale
+            - keycloak
+
+    frontend-dev:
+        container_name: frontend-dev
+        build:
+            context: ./frontend
+            dockerfile: Dockerfile.dev
+        environment:
+            NODE_ENV: development
+            REACT_APP_BACKEND_URL: http://localhost:5000
+        ports:
+            - "3000:3000"
+        networks:
+            - mariadb_network
+        depends_on:
+            - backend-dev
+
+    frontend-prod:
+        container_name: frontend-prod
+        build:
+            context: ./frontend
+            dockerfile: Dockerfile.prod
+        environment:
+            NODE_ENV: production
+            REACT_APP_BACKEND_URL: http://localhost:5001/api
+        ports:
+            - "3001:3001"
+        networks:
+            - mariadb_network
+        depends_on:
+            - backend-prod
+
+networks:
+    mariadb_network:
+        driver: bridge
