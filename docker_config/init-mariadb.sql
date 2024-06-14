@@ -1,4 +1,5 @@
-GRANT ALL PRIVILEGES ON *.* TO 'maxscale_user'@'%' IDENTIFIED BY 'secure_pass123';
+-- SQLBook: Code
+GRANT ALL PRIVILEGES ON *.* TO 'mariadb_user'@'%' IDENTIFIED BY 'secure_pass123';
 FLUSH PRIVILEGES;
 
 CREATE DATABASE historipedia;
